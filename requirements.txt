@@ -1,0 +1,4 @@
+Shapely>=1.7
+geopandas>=0.6
+geopy>=2
+zeep>=3.4
