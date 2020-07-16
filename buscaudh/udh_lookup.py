@@ -102,7 +102,6 @@ def geolocate(address, gc_cod="osm"):
     address["longitude"] = res.longitude
     address["latitude"] = res.latitude
     return address
-    # return Point(res.longitude, res.latitude)
 
 def geolocate_cep(cep):
     cep_fmt = re.search(cep_match, cep)

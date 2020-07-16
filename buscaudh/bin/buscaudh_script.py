@@ -38,7 +38,7 @@ if __name__ == "__main__":
         df = pd.read_csv(args.sesap_file,
             sep=';', index_col=0)
         t0 = time()
-        for row in df[:6785].itertuples(index=False):
+        for row in df.itertuples(index=False):
             if pd.notnull(row.CEP):
                 info = lookup_udh(row.CEP)
                 output.append({k:info.get(k) for k in cols})
