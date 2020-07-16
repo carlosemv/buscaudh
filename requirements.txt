@@ -1,6 +1,7 @@
+python>=3.8
 Shapely>=1.7
 geopandas>=0.6
 geopy>=2
 pandas>=1
-requests>=2.24
+requests>=2.23
 zeep>=3.4
