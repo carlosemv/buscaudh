@@ -6,14 +6,13 @@ from geopy.exc import GeocoderUnavailable
 from shapely.geometry import Point
 import pandas as pd
 import geopandas as gpd
-from importlib.resources import path
+import importlib_resources
 from buscaudh.exceptions import CEPException,\
     GeolocationException
 import requests
 
-with path('buscaudh.data',
-        'RM_Natal_UDH_2_region.shp') as shp:
-    udh_shapefile = shp
+udh_shapefile = importlib_resources.files(
+    'buscaudh.data') /'RM_Natal_UDH_2_region.shp'
 cep_match = r'(\d{2})\.?(\d{3})-?([\d]{3})'
 _correios_wsdl = 'https://apps.correios.com.br/SigepMasterJPA/'\
     'AtendeClienteService/AtendeCliente?wsdl'
@@ -112,9 +111,9 @@ def geolocate_cep(cep):
 
     geoloc = None
     for gc in _geoloc_order:
-        with path('buscaudh.data',
-                'all_{}_locations.csv'.format(gc)) as df_file:
-            df = pd.read_csv(df_file)
+        df_file = importlib_resources.files(
+            'buscaudh.data') / 'all_{}_locations.csv'.format(gc)
+        df = pd.read_csv(df_file)
         df = df.loc[df.cep == cep]
         if df.shape[0] > 1:
             raise GeolocationException("Geolocalização "
