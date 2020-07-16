@@ -1,9 +1,10 @@
 import re
 import zeep
 from statistics import mean
-from geopy.geocoders import Nominatim
+from geopy.geocoders import Nominatim, ArcGIS
 from geopy.exc import GeocoderUnavailable
 from shapely.geometry import Point
+import pandas as pd
 import geopandas as gpd
 from importlib.resources import path
 from buscaudh.exceptions import CEPException,\
@@ -13,26 +14,37 @@ import requests
 with path('buscaudh.data',
         'RM_Natal_UDH_2_region.shp') as shp:
     udh_shapefile = shp
+cep_match = r'(\d{2})\.?(\d{3})-?([\d]{3})'
 _correios_wsdl = 'https://apps.correios.com.br/SigepMasterJPA/'\
     'AtendeClienteService/AtendeCliente?wsdl'
-cep_match = r'([0-9]{5})-?([0-9]{3})'
+_geoloc_order = ("custom", "osm", "arcgis")
 
-def cep_address(cep, retry=0):
-    client = zeep.Client(wsdl=_correios_wsdl)
+def cep_address(cep, retry=0, max_retries=1):
     try:
-        info = client.service.consultaCEP(cep)
-    except requests.exceptions.ConnectionError as ex:
-        if retry == 0:
-            return get_location(cep, 1)
-        raise CEPException("Falha de conexão"
-            "na consulta de CEP.") from ex
+        client = zeep.Client(wsdl=_correios_wsdl)
+    except (requests.exceptions.HTTPError,
+            requests.exceptions.ConnectionError):
+        if retry < max_retries:
+            return cep_address(cep, retry+1)
+        raise CEPException(def_msg="connection error") from ex
     except zeep.exceptions.Fault as ex:
         # CEP not found
-        raise CEPException("Falha na consulta de CEP:"
-            " CEP não encontrado.") from ex
+        raise CEPException(def_msg="not found") from ex
 
-    info = client.service.consultaCEP(cep)
-    end = info["end"]
+    try:
+        info = client.service.consultaCEP(cep)
+    except (requests.exceptions.ConnectionError,
+        zeep.exceptions.TransportError) as ex:
+        if retry < max_retries:
+            return cep_address(cep, retry+1)
+        raise CEPException(def_msg="connection error") from ex
+    except zeep.exceptions.Fault as ex:
+        # CEP not found
+        raise CEPException(def_msg="not found") from ex
+    if not info:
+        raise CEPException(def_msg="not found")
+
+    comp = ""
     if info["complemento2"]:
         # add house number if available
         numbers = [int(n) for n in re.findall(r'\d+',
@@ -43,34 +55,100 @@ def cep_address(cep, retry=0):
             # and adjusting parity
             if numbers[0] % 2 != number % 2:
                 number += 1
-            end += " {}".format(number)
+            comp = "{}".format(number)
         elif numbers:
-            end += " {}".format(numbers[0])
-    return "{}, {}, {}, {}, Brazil".format(end,
-        info["bairro"], info["cidade"], info["uf"])
+            comp = "{}".format(numbers[0])
 
-def geolocate(address):
-    gc = Nominatim(user_agent="buscaudh")
+    return {
+        "logradouro": info["end"],
+        "complemento": comp,
+        "bairro": info["bairro"],
+        "cidade": info["cidade"],
+        "estado": info["uf"],
+        "cep": cep
+    }
+
+def _build_address(info):
+    addr = ""
+    if info["end"]:
+        addr += "{}, ".format(info["end"]+comp)
+    if info["bairro"]:
+        addr += "{}, ".format(info["bairro"])
+    addr += "{}, {}, Brazil".format(
+        info["cidade"], info["uf"])
+    return addr
+
+def geolocate(address, gc_cod="osm"):
+    search_addr = _build_address(address)
+    if gc_cod == "osm":
+        gc = Nominatim(user_agent="buscaudh")
+    elif gc_cod == "arcgis":
+        gc = ArcGIS()
+    else:
+        raise ValueError("Invalid gc_cod {}".format(gc_cod))
+
     try:
-        res = gc.geocode(address)
+        res = gc.geocode(search_addr)
     except GeocoderUnavailable as exc:
         raise GeolocationException("Serviço de "
             "geolocalização indisponível") from exc
     if not res:
         # Address not found
+        if gc_cod == "osm":
+            return geolocate(address, "arcgis")
         raise GeolocationException("Geolocalização de "
-            "endereço não encontrado ({})".format(address))
-    return Point(res.longitude, res.latitude)
+            "endereço não encontrado ({})".format(search_addr))
+
+    address["longitude"] = res.longitude
+    address["latitude"] = res.latitude
+    return address
+    # return Point(res.longitude, res.latitude)
 
 def geolocate_cep(cep):
-    if not re.search(cep_match, cep):
-        raise ValueError("CEP inválido.")
-    return geolocate(cep_address(cep))
+    cep_fmt = re.search(cep_match, cep)
+    if not cep_fmt:
+        raise CEPException("CEP inválido:"
+            " {}".format(cep))
+    cep = "{}{}-{}".format(*cep_fmt.group(1,2,3))
+
+    geoloc = None
+    for gc in _geoloc_order:
+        with path('buscaudh.data',
+                'all_{}_locations.csv'.format(gc)) as df_file:
+            df = pd.read_csv(df_file)
+        df = df.loc[df.cep == cep]
+        if df.shape[0] > 1:
+            raise GeolocationException("Geolocalização "
+                "ambígua em cache ({})".format(gc))
+        elif df.shape[0] == 0:
+            continue
+
+        geoloc = df.iloc[0].to_dict()
+        if geoloc["latitude"] and geoloc["longitude"]:
+            return geoloc
+
+    if geoloc:
+        return geoloc
+    try:
+        addr = cep_address(cep)
+        geoloc = geolocate(addr)
+    except CEPException:
+        return {"cep": cep}
+    except GeolocationException:
+        return addr
+    return geoloc
 
 def lookup_udh(cep):
     geoloc = geolocate_cep(cep)
+    if not geoloc.get("latitude") or not geoloc.get("longitude"):
+        return geoloc
+
+    p = Point(geoloc["longitude"], geoloc["latitude"])
     gdf = gpd.read_file(udh_shapefile)
+    udh = None
     for shape in gdf.itertuples(index=False):
-        if geoloc.within(shape.geometry):
-            return shape.UDH_ATLAS
-    return None
+        if p.within(shape.geometry):
+            udh = shape.UDH_ATLAS
+            break
+    geoloc["udh"] = udh
+    return geoloc
