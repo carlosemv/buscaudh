@@ -47,9 +47,9 @@ if __name__ == "__main__":
 
         print("Processando...", flush=True)
         t0 = time()
-        for row in df.itertuples(index=False):
-            if pd.notnull(row.CEP):
-                info = lookup_udh(row.CEP)
+        for cep in df.CEP:
+            if pd.notnull(cep):
+                info = lookup_udh(cep)
                 output.append({k:info.get(k) for k in cols})
             else:
                 output.append({k:None for k in cols})
