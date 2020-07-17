@@ -164,6 +164,7 @@ def geolocate_cep(cep):
         return addr
     return geoloc
 
+# Main function to look for UDH code based on CEP code
 def lookup_udh(cep):
     geoloc = geolocate_cep(cep)
     if not geoloc.get("latitude") or not geoloc.get("longitude"):
@@ -178,3 +179,5 @@ def lookup_udh(cep):
             break
     geoloc["udh"] = udh
     return geoloc
+    
+
