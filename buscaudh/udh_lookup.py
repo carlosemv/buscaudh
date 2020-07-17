@@ -11,12 +11,16 @@ from buscaudh.exceptions import CEPException,\
     GeolocationException
 import requests
 
-udh_shapefile = importlib_resources.files(
-    'buscaudh.data') /'RM_Natal_UDH_2_region.shp'
 cep_match = r'(\d{2})\.?(\d{3})-?([\d]{3})'
 _correios_wsdl = 'https://apps.correios.com.br/SigepMasterJPA/'\
     'AtendeClienteService/AtendeCliente?wsdl'
-_geoloc_order = ("custom", "osm", "arcgis")
+
+_data_root = importlib_resources.files('buscaudh.data')
+_udh_gdf = gpd.read_file(_data_root/'RM_Natal_UDH_2_region.shp')
+_addr_cache = pd.read_csv(_data_root / 'all_addresses.csv',
+    dtype={"complemento":str})
+_geoloc_caches = tuple((gc, pd.read_csv(_data_root/'all_{}_locations'\
+    '.csv'.format(gc))) for gc in ("custom", "osm", "arcgis"))
 
 def cep_address(cep, retry=0, max_retries=1):
     try:
@@ -68,14 +72,21 @@ def cep_address(cep, retry=0, max_retries=1):
     }
 
 def _build_address(info):
-    addr = ""
-    if info["end"]:
-        addr += "{}, ".format(info["end"]+comp)
-    if info["bairro"]:
-        addr += "{}, ".format(info["bairro"])
-    addr += "{}, {}, Brazil".format(
-        info["cidade"], info["uf"])
-    return addr
+    addr_str = ""
+    end = info["logradouro"]
+    if pd.notnull(end):
+        if pd.notnull(info["complemento"]):
+            end += " {}".format(info["complemento"])
+        addr_str += "{}, ".format(end)
+    if pd.notnull(info["bairro"]):
+        addr_str += "{}, ".format(info["bairro"])
+    if not (pd.notnull(info["cidade"]) and
+            pd.notnull(info["estado"])):
+        raise ValueError("Endereço com cidade "\
+            "e/ou estado inválido: {}".format(info))
+    addr_str += "{}, {}, Brazil".format(
+        info["cidade"], info["estado"])
+    return addr_str
 
 def geolocate(address, gc_cod="osm"):
     search_addr = _build_address(address)
@@ -108,30 +119,47 @@ def geolocate_cep(cep):
         raise CEPException("CEP inválido:"
             " {}".format(cep))
     cep = "{}{}-{}".format(*cep_fmt.group(1,2,3))
+    addr = _addr_cache.loc[_addr_cache.cep == cep]
+    if addr.shape[0] > 1:
+        raise ValueError("Endereço "
+            "ambíguo em cache para cep {}".format(cep))
+    elif addr.shape[0] == 1:
+        addr = addr.iloc[0].to_dict()
+        if pd.isnull(addr["cidade"]):
+            # if CEP with no associated address in cache, return
+            return addr
+        # else, there is valid address, proceed with geolocation
+    else:
+        # CEP not in cache, try and get address
+        try:
+            addr = cep_address(cep)
+        except CEPException:
+            # TODO: add to cache
+            return {"cep": cep}
 
     geoloc = None
-    for gc in _geoloc_order:
-        df_file = importlib_resources.files(
-            'buscaudh.data') / 'all_{}_locations.csv'.format(gc)
-        df = pd.read_csv(df_file)
-        df = df.loc[df.cep == cep]
+    for gc_cod, gc in _geoloc_caches:
+        df = gc.loc[gc.cep == cep]
         if df.shape[0] > 1:
-            raise GeolocationException("Geolocalização "
-                "ambígua em cache ({})".format(gc))
+            raise ValueError("Geolocalização ambígua"\
+                "em cache ({}) para cep {}".format(gc_cod, cep))
         elif df.shape[0] == 0:
             continue
 
         geoloc = df.iloc[0].to_dict()
         if geoloc["latitude"] and geoloc["longitude"]:
-            return geoloc
+            # if successful geoloc in cache, return
+            addr["latitude"] = geoloc["latitude"]
+            addr["longitude"] = geoloc["longitude"]
+            return addr
 
     if geoloc:
-        return geoloc
+        # if unsuccessful geoloc in cache, return
+        return addr
+
+    # else, try geolocation
     try:
-        addr = cep_address(cep)
         geoloc = geolocate(addr)
-    except CEPException:
-        return {"cep": cep}
     except GeolocationException:
         return addr
     return geoloc
@@ -139,12 +167,12 @@ def geolocate_cep(cep):
 def lookup_udh(cep):
     geoloc = geolocate_cep(cep)
     if not geoloc.get("latitude") or not geoloc.get("longitude"):
+        geoloc["udh"] = None
         return geoloc
 
     p = Point(geoloc["longitude"], geoloc["latitude"])
-    gdf = gpd.read_file(udh_shapefile)
     udh = None
-    for shape in gdf.itertuples(index=False):
+    for shape in _udh_gdf.itertuples(index=False):
         if p.within(shape.geometry):
             udh = shape.UDH_ATLAS
             break
