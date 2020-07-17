@@ -35,16 +35,29 @@ if __name__ == "__main__":
         output = []
         cols = ("cep", "bairro", "udh")
 
-        df = pd.read_csv(args.sesap_file,
-            sep=';', index_col=0)
+        print("Carregando dados...", end=" ", flush=True)
+        if args.sesap_file.endswith(".xlsx"):
+            df = pd.read_excel(args.sesap_file,
+                sheet_name="BANCO", dtype={"CEP":str},
+                usecols=["CEP"])
+        else:
+            df = pd.read_csv(args.sesap_file,
+                sep=';', index_col=0)
+        print("Dados de entrada carregados.")
+
+        print("Processando...", flush=True)
         t0 = time()
-        for row in df[:13568].itertuples(index=False):
+        for row in df[:100].itertuples(index=False):
             if pd.notnull(row.CEP):
                 info = lookup_udh(row.CEP)
                 output.append({k:info.get(k) for k in cols})
             else:
                 output.append({k:None for k in cols})
         print("Completo em {}s".format(time()-t0))
+
+        print("Escrevendo para arquivos de saída...",
+            end=" ", flush=True)
         new_df = pd.DataFrame(output)
         new_df.to_csv(args.output+".csv")
         new_df.to_excel(args.output+".xlsx")
+        print("Saída escrita.")
