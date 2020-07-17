@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from buscaudh.exceptions import CEPException
 from buscaudh import lookup_udh, cep_match
 import re
 import argparse
@@ -47,10 +48,14 @@ if __name__ == "__main__":
 
         print("Processando...", flush=True)
         t0 = time()
-        for cep in df.CEP:
+        for cep in df.CEP[:1000]:
             if pd.notnull(cep):
-                info = lookup_udh(cep)
-                output.append({k:info.get(k) for k in cols})
+                try:
+                    info = lookup_udh(cep)
+                except CEPException:
+                    output.append({k:None for k in cols})
+                else:
+                    output.append({k:info.get(k) for k in cols})
             else:
                 output.append({k:None for k in cols})
         print("Completo em {}s".format(time()-t0))
