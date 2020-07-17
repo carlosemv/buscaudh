@@ -48,7 +48,7 @@ if __name__ == "__main__":
 
         print("Processando...", flush=True)
         t0 = time()
-        for cep in df.CEP[:1000]:
+        for cep in df.CEP:
             if pd.notnull(cep):
                 try:
                     info = lookup_udh(cep)
