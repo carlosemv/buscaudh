@@ -34,7 +34,7 @@ if __name__ == "__main__":
         print(lookup_udh(args.cep))
     elif args.sesap_file:
         output = []
-        cols = ("cep", "bairro", "udh")
+        cols = ("cep", "cidade", "uf", "bairro", "udh")
 
         print("Carregando dados...", end=" ", flush=True)
         if args.sesap_file.endswith(".xlsx"):
