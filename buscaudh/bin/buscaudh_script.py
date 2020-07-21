@@ -39,7 +39,7 @@ if __name__ == "__main__":
         print("Carregando dados...", end=" ", flush=True)
         if args.sesap_file.endswith(".xlsx"):
             df = pd.read_excel(args.sesap_file,
-                sheet_name="BANCO", dtype={"CEP":str},
+                dtype={"CEP":str},
                 usecols=["CEP"], engine='xlrd')
         else:
             df = pd.read_csv(args.sesap_file,
