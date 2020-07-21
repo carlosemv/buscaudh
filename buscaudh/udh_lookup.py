@@ -26,7 +26,8 @@ def cep_address(cep, retry=0, max_retries=1):
     try:
         client = zeep.Client(wsdl=_correios_wsdl)
     except (requests.exceptions.HTTPError,
-            requests.exceptions.ConnectionError):
+            requests.exceptions.ConnectionError,
+            requests.exceptions.ReadTimeout):
         if retry < max_retries:
             return cep_address(cep, retry+1)
         raise CEPException(def_msg="connection error") from ex
