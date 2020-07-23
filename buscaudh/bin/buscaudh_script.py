@@ -48,7 +48,7 @@ if __name__ == "__main__":
         print("Processando...", flush=True)
         t0 = time()
         output = [{k:info.get(k) for k in cols} for info
-            in ceps_to_udhs(df.CEP[:100])]
+            in ceps_to_udhs(df.CEP)]
         print("Completo em {}s".format(time()-t0))
 
         print("Escrevendo para arquivos de saída...",
