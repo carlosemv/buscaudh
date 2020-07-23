@@ -45,7 +45,6 @@ def cep_to_addr(cep, retry=0, max_retries=1, addr_cache={}, use_correios=True):
     if not use_correios:
         raise ValueError("CEP not in address cache.")
 
-    print("correios")
     # connect to webservice
     try:
         client = zeep.Client(wsdl=_correios_wsdl)
@@ -132,7 +131,6 @@ def _build_addr(info):
 
 # Geolocate an address
 def addr_to_geo(address, gc_cod="osm", geoloc_caches={}):
-    print("geoloc")
     search_addr = _build_addr(address)
     
     if gc_cod == "osm":
@@ -171,6 +169,11 @@ def addr_to_geo(address, gc_cod="osm", geoloc_caches={}):
 # geolocate a CEP
 def cep_to_geo(cep, caches={}):
     try:
+        cep = fix_cep(cep)
+    except CEPException:
+        return {}
+
+    try:
         addr = cep_to_addr(cep, addr_cache=caches.get('addr_cache'))
         if pd.isnull(addr.get("cidade")):
             # if CEP with no associated address in cache, return
@@ -178,7 +181,7 @@ def cep_to_geo(cep, caches={}):
         # else, address obtained, proceed with geolocation
     except CEPException:
         # address not found or multiple connection errors
-        return {}
+        return {'cep': cep}
 
     # check geolocation caches
     cep = addr['cep']
