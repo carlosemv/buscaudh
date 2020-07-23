@@ -248,12 +248,15 @@ def ceps_to_udhs(ceps):
             index_col="cep").to_dict('index'))for gc in
             ("custom", "osm", "arcgis")])
     }
-    print("caches loaded")
     
     for cep in ceps:
         yield cep_to_udh(cep, caches)
 
-    print("done using caches")
+    df = pd.DataFrame.from_dict(caches['addr_cache'], 'index')
+    df.index.name = 'cep'
+    df.to_csv(_data_root / 'all_cep_to_addr.csv')
 
-    # pd.DataFrame.from_dict(d, 'index')
-    # TODO: Update cache file
+    for gc_code, cache in caches["geoloc_caches"].items():
+        df = pd.DataFrame.from_dict(cache, 'index')
+        df.index.name = 'cep'
+        df.to_csv(_data_root/'all_{}_locations.csv'.format(gc_code))
