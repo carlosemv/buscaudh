@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from buscaudh.exceptions import CEPException
-from buscaudh import lookup_udh, cep_match
+from buscaudh import ceps_to_udhs, cep_match
 import re
 import argparse
 from time import time
@@ -33,7 +33,6 @@ if __name__ == "__main__":
     if args.cep:
         print(lookup_udh(args.cep))
     elif args.sesap_file:
-        output = []
         cols = ("cep", "cidade", "uf", "bairro", "udh")
 
         print("Carregando dados...", end=" ", flush=True)
@@ -48,16 +47,8 @@ if __name__ == "__main__":
 
         print("Processando...", flush=True)
         t0 = time()
-        for cep in df.CEP:
-            if pd.notnull(cep):
-                try:
-                    info = lookup_udh(cep)
-                except CEPException:
-                    output.append({k:None for k in cols})
-                else:
-                    output.append({k:info.get(k) for k in cols})
-            else:
-                output.append({k:None for k in cols})
+        output = [{k:info.get(k) for k in cols} for info
+            in ceps_to_udhs(df.CEP[:100])]
         print("Completo em {}s".format(time()-t0))
 
         print("Escrevendo para arquivos de saída...",
