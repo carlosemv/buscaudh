@@ -224,6 +224,12 @@ def cep_to_udh(cep, caches={}):
         return geoloc
 
     # if location available, will check if within limits of one UDH
+
+    if caches.get('udh_cache'):
+        geoloc['udh'] = caches['udh_cache'].get(geoloc['cep'])
+        if geoloc['udh']:
+            return geoloc
+
     p = Point(geoloc["longitude"], geoloc["latitude"])
     udh = None
     for shape in _udh_gdf.itertuples(index=False):
@@ -246,7 +252,9 @@ def ceps_to_udhs(ceps):
         "geoloc_caches": OrderedDict([(gc, pd.read_csv(_data_root/
             'all_{}_locations.csv'.format(gc),
             index_col="cep").to_dict('index'))for gc in
-            ("custom", "osm", "arcgis")])
+            ("custom", "osm", "arcgis")]),
+        "udh_cache": pd.read_csv(_data_root / 'cep_to_udh.csv',
+            dtype={"udh": str}, index_col="cep").to_dict('index')
     }
     
     for cep in ceps:
