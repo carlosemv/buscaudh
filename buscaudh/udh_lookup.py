@@ -224,18 +224,27 @@ def cep_to_udh(cep, caches={}):
         return geoloc
 
     # if location available, will check if within limits of one UDH
+
+    # if there is a cache
+    udh_cache = caches.get('udh_cache')
+    if udh_cache:
+        udh = udh_cache.get(geoloc['cep'])
+        # if cep in cache
+        if udh:
+            udh = udh.get('udh')
+            geoloc["udh"] = udh if pd.notnull(udh) else None
+            return geoloc
+
     p = Point(geoloc["longitude"], geoloc["latitude"])
     udh = None
     for shape in _udh_gdf.itertuples(index=False):
         if p.within(shape.geometry):
             udh = shape.UDH_ATLAS
             break
-    else:
-        # not within any UDH
-        geoloc["udh"] = None
-        return geoloc
-    geoloc["udh"] = udh
 
+    geoloc["udh"] = udh
+    if udh_cache:
+        udh_cache[geoloc['cep']] = udh
     return geoloc
 
 def ceps_to_udhs(ceps):
@@ -246,7 +255,9 @@ def ceps_to_udhs(ceps):
         "geoloc_caches": OrderedDict([(gc, pd.read_csv(_data_root/
             'all_{}_locations.csv'.format(gc),
             index_col="cep").to_dict('index'))for gc in
-            ("custom", "osm", "arcgis")])
+            ("custom", "osm", "arcgis")]),
+        "udh_cache": pd.read_csv(_data_root / 'cep_to_udh.csv',
+            dtype={"udh": str}, index_col="cep").to_dict('index')
     }
     
     for cep in ceps:
@@ -260,3 +271,7 @@ def ceps_to_udhs(ceps):
         df = pd.DataFrame.from_dict(cache, 'index')
         df.index.name = 'cep'
         df.to_csv(_data_root/'all_{}_locations.csv'.format(gc_code))
+
+    df = pd.DataFrame.from_dict(caches['udh_cache'], 'index')
+    df.index.name = 'cep'
+    df.to_csv(_data_root / 'cep_to_udh.csv')
